@@ -1,0 +1,13 @@
+# Local build output and generated reports.
+/endpoint-hunter
+/output/
+/*.txt
+/*.csv
+/*.json
+/*.log
+
+# Local request headers and credentials.
+/.env*
+/headers*
+/*.pem
+/*.key

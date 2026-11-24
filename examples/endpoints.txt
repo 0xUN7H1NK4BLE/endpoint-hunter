@@ -1,0 +1,10 @@
+# Synthetic inventory from a route documentation project
+https://catalog.example.test/api/v1/books
+https://catalog.example.test/api/v1/books/42?edition=paper
+https://catalog.example.test/api/v1/books/search
+https://catalog.example.test/api/v1/reading-lists
+https://catalog.example.test/api/v1/collections
+https://preview.example.test/api/v1/books
+https://CATALOG.example.test:443/api/v1/books#contents
+https://catalog.example.test/assets/cover.webp
+https://archive.example.test/api/v1/collections

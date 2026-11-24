@@ -1,0 +1,6 @@
+{"kind":"baseline","url":"https://catalog.example.test/api/v1/books/absent-fixture","status":200,"headers":{"Content-Type":["text/html"]},"body":"No entry for /api/v1/books/absent-fixture"}
+{"kind":"response","url":"https://catalog.example.test/api/v1/books/print","status":200,"headers":{"Content-Type":["text/html"]},"body":"No entry for /api/v1/books/print"}
+{"kind":"response","url":"https://catalog.example.test/api/v1/books/summary","status":200,"headers":{"Content-Type":["application/json"]},"body":"{\"total\":42}"}
+{"kind":"response","url":"https://catalog.example.test/api/v1/books/export","status":403,"headers":{"Content-Type":["text/plain"]},"body":"Permission required"}
+{"kind":"baseline","url":"https://preview.example.test/api/v1/absent-fixture","status":404,"body":"Missing"}
+{"kind":"response","url":"https://preview.example.test/api/v1/collections","status":302,"headers":{"Location":["/collections/"]},"body":""}

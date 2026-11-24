@@ -1,0 +1,8 @@
+# Concrete GET URLs exported from the example application's router
+https://catalog.example.test/api/v1/books
+https://catalog.example.test/api/v1/books/summary
+https://catalog.example.test/api/v1/books/print
+https://catalog.example.test/api/v1/books/export
+https://preview.example.test/api/v1/collections
+https://preview.example.test/api/v1/reading-lists
+https://archive.example.test/api/v1/books/summary
