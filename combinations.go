@@ -178,78 +178,85 @@ func collectSiblingCombinations(urls []Endpoint, resources Frequency, out *candi
 	}
 }
 
-type idFamily struct {
-	origin string
-	parent string
-	ids    map[string]Endpoint
-	tails  map[string]map[string]Endpoint
+type idResource struct {
+	origin   string
+	path     string
+	id       string
+	evidence Endpoint
+	tails    map[string]Endpoint
 }
 
-// collectIDCombinations keeps concrete IDs within the exact resource path in
-// which each ID was observed. It never moves an ID between resource names.
+// collectIDCombinations proposes a missing route template once per resource.
+// A suffix already observed under /resource/{id} is known route structure;
+// testing that suffix against every other ID would only repeat the same route.
+// IDs remain attached to the resource where they were seen.
 func collectIDCombinations(urls []Endpoint, out *candidateCollector) {
-	families := map[string]*idFamily{}
+	families := map[string]map[string]*idResource{}
 	for _, e := range urls {
 		idAt := -1
 		for i, part := range e.Segments {
-			if dynamic(part) {
+			if dynamic(part) || opaqueIdentifier(part) {
 				if idAt >= 0 {
 					idAt = -2
 					break
 				}
 				idAt = i
-			} else if !simpleRouteSegment.MatchString(part) || unsafeRouteSuffix(part) {
-				idAt = -2
-				break
 			}
 		}
-		if idAt <= 0 {
+		if idAt <= 0 || !safeStaticParts(e.Segments[:idAt]) ||
+			!safeStaticParts(e.Segments[idAt+1:]) {
 			continue
 		}
 		escaped := strings.Split(strings.Trim(e.Path, "/"), "/")
-		parent := "/" + strings.Join(escaped[:idAt], "/")
-		key := e.Origin + " " + parent
-		family := families[key]
+		resourcePath := "/" + strings.Join(escaped[:idAt], "/")
+		resourceKey := strings.ToLower(resourcePath)
+		familyKey := e.Origin + " " + parentDir(resourceKey)
+		family := families[familyKey]
 		if family == nil {
-			family = &idFamily{origin: e.Origin, parent: parent, ids: map[string]Endpoint{}, tails: map[string]map[string]Endpoint{}}
-			families[key] = family
+			family = map[string]*idResource{}
+			families[familyKey] = family
 		}
-		id := escaped[idAt]
-		if old, exists := family.ids[id]; !exists || len(e.Query) == 0 && len(old.Query) > 0 {
-			family.ids[id] = e
+		resource := family[resourceKey]
+		if resource == nil {
+			resource = &idResource{origin: e.Origin, path: resourcePath, id: escaped[idAt], evidence: e, tails: map[string]Endpoint{}}
+			family[resourceKey] = resource
+		} else if resource.path != resourceKey && resourcePath == resourceKey {
+			// Prefer the lowercase spelling when the inventory contains both
+			// case variants of one resource template.
+			resource.path, resource.id, resource.evidence = resourcePath, escaped[idAt], e
 		}
 		if idAt+1 < len(escaped) {
 			tail := strings.Join(escaped[idAt+1:], "/")
 			if strings.HasSuffix(e.Path, "/") {
 				tail += "/"
 			}
-			if family.tails[id] == nil {
-				family.tails[id] = map[string]Endpoint{}
+			if _, exists := resource.tails[tail]; !exists {
+				resource.tails[tail] = e
 			}
-			family.tails[id][tail] = e
 		}
 	}
 	for _, key := range sortedKeys(families) {
 		family := families[key]
-		if len(family.ids) < 2 {
+		if len(family) < 2 {
 			continue
 		}
-		ids := sortedKeys(family.ids)
+		resources := sortedKeys(family)
 		tailSources := map[string][]Endpoint{}
-		for _, id := range ids {
-			for _, tail := range sortedKeys(family.tails[id]) {
-				tailSources[tail] = append(tailSources[tail], family.tails[id][tail])
+		for _, resourcePath := range resources {
+			for _, tail := range sortedKeys(family[resourcePath].tails) {
+				tailSources[tail] = append(tailSources[tail], family[resourcePath].tails[tail])
 			}
 		}
 		for _, tail := range sortedKeys(tailSources) {
 			sources := tailSources[tail]
-			for _, id := range ids {
-				if _, exists := family.tails[id][tail]; exists {
+			for _, resourcePath := range resources {
+				target := family[resourcePath]
+				if _, known := target.tails[tail]; known {
 					continue
 				}
-				out.add(family.origin, family.parent+"/"+id+"/"+tail, family.parent+"/{id}/"+tail,
-					"suffix observed for another ID in the same resource", 65+min(len(sources), 3)*5,
-					family.ids[id].URL, sources[0].URL)
+				out.add(target.origin, target.path+"/"+target.id+"/"+tail,
+					target.path+"/{id}/"+tail, "new ID route suffix observed under sibling resource",
+					60+min(len(sources), 3)*5, target.evidence.URL, sources[0].URL)
 			}
 		}
 	}
