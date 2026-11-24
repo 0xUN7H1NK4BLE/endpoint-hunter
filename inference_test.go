@@ -34,7 +34,7 @@ func TestInferenceUsesSameOriginEvidence(t *testing.T) {
 			t.Fatalf("suggested observed structure: %+v", s)
 		}
 	}
-	if len(inferTemplates(a, 0)) != 0 || len(inferTemplates(a, 1)) != 1 {
+	if len(inferTemplates(a, 0)) != len(got) || len(inferTemplates(a, 1)) != 1 {
 		t.Fatal("candidate cap ignored")
 	}
 }

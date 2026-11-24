@@ -15,7 +15,7 @@ func TestGenerator(t *testing.T) {
 	if got := generate(observed, nil, s, true, 10); len(got) != 0 {
 		t.Fatal(got)
 	}
-	if got := generate(observed, manifest, s, true, 0); len(got) != 0 {
+	if got := generate(observed, manifest, s, true, 0); len(got) != 2 {
 		t.Fatal(got)
 	}
 }

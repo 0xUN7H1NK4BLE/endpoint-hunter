@@ -84,7 +84,10 @@ func inferTemplates(a Analysis, limit int) []TemplateSuggestion {
 		}
 		return a.Template < b.Template
 	})
-	return suggestions[:min(limit, len(suggestions))]
+	if limit > 0 && len(suggestions) > limit {
+		return suggestions[:limit]
+	}
+	return suggestions
 }
 
 func writeTemplates(w io.Writer, suggestions []TemplateSuggestion) error {

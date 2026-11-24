@@ -60,9 +60,13 @@ func execute(args []string, out, log io.Writer) error {
 		fs.StringVar(&test, "test", "", "check a single URL")
 	}
 	if cmd == "run" || cmd == "generate" {
+		defaultLimit := 1000
+		if cmd == "generate" {
+			defaultLimit = 0
+		}
 		fs.StringVar(&manifestFile, "manifest", "", "file of routes declared by the application owner")
 		fs.BoolVar(&cross, "cross-domain", false, "generate or rank routes using other in-scope origins")
-		fs.IntVar(&limit, "max-candidates", 1000, "maximum generated candidates")
+		fs.IntVar(&limit, "max-candidates", defaultLimit, "maximum generated candidates; 0 keeps all")
 	}
 	if cmd == "generate" {
 		fs.BoolVar(&templates, "templates", false, "print abstract templates instead of concrete candidates")
@@ -173,6 +177,7 @@ func execute(args []string, out, log io.Writer) error {
 	}
 	inputs := []string{input, scopeFile, manifestFile, captureFile, headerFile}
 	r := report{included: in, excluded: excluded}
+	totalGenerated := 0
 	targets := in
 	if cmd == "run" || (cmd == "generate" && manifestFile == "") {
 		r.analysis = analyze(in)
@@ -186,7 +191,7 @@ func execute(args []string, out, log io.Writer) error {
 			return err
 		}
 		if manifestFile == "" && (live || cmd == "generate") {
-			r.candidates = generateFromInventory(in, scope, cross, limit)
+			r.candidates, totalGenerated = generateFromInventoryComplete(in, scope, cross, limit)
 		}
 	}
 	if manifestFile != "" {
@@ -198,10 +203,14 @@ func execute(args []string, out, log io.Writer) error {
 		if manifest.Counts.Unique == 0 {
 			return fmt.Errorf("--manifest %q has no usable route URLs; supply one absolute HTTP(S) route URL per line, or omit --manifest for an inventory run", manifestFile)
 		}
-		r.candidates = generate(in, manifest.URLs, scope, cross, limit)
+		r.candidates = generate(in, manifest.URLs, scope, cross, 0)
+		totalGenerated = len(r.candidates)
+		if limit > 0 && len(r.candidates) > limit {
+			r.candidates = r.candidates[:limit]
+		}
 	}
 	if cmd == "generate" {
-		fmt.Fprintf(log, "Generated candidates: %d\n", len(r.candidates))
+		printGenerationCount(log, len(r.candidates), totalGenerated)
 		err := printAndSave(out, output, inputs, func(w io.Writer) error { return writeGenerated(w, r.candidates) })
 		if err == nil && output != "" {
 			fmt.Fprintln(log, "Saved to", output)
@@ -222,7 +231,7 @@ func execute(args []string, out, log io.Writer) error {
 	}
 	if live {
 		if cmd == "run" {
-			fmt.Fprintf(log, "Generated candidates: %d\n", len(r.candidates))
+			printGenerationCount(log, len(r.candidates), totalGenerated)
 		} else {
 			fmt.Fprintf(log, "In-scope targets: %d\n", len(targets))
 		}
@@ -311,6 +320,14 @@ func execute(args []string, out, log io.Writer) error {
 		return nil
 	}
 	return writeStatusRows(out, r.results, !*noColor && terminalColors(out))
+}
+
+func printGenerationCount(w io.Writer, returned, total int) {
+	if total > returned {
+		fmt.Fprintf(w, "Generated candidates: %d of %d (capped; use --max-candidates 0 for all)\n", returned, total)
+	} else {
+		fmt.Fprintf(w, "Generated candidates: %d\n", returned)
+	}
 }
 
 func preflightOutput(name string, sections []reportSection, inputs []string) error {

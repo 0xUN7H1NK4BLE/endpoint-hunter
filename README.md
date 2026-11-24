@@ -37,7 +37,7 @@ Put one absolute HTTP or HTTPS URL on each line of an inventory file. Create a s
 ./endpoint-hunter run -i urls.txt -s scope.txt -H "Authorization: Bearer $TOKEN" -H 'Accept: application/json'
 ```
 
-The run command generates new paths from observed sibling resources, sends GET requests for those candidates, and prints one URL and status per response. Imported URLs are used as evidence and are not requested. Defaults are 1000 maximum candidates, five concurrent requests, two requests per second globally, and ten seconds per request.
+The run command generates new paths from observed route combinations, sends GET requests for those candidates, and prints one URL and status per response. Imported URLs are used as evidence and are not requested. Defaults are 1000 maximum candidates, five concurrent requests, two requests per second globally, and ten seconds per request. If generation finds more than 1000, the CLI prints the full count and the number retained. Use `--max-candidates 0` to scan all generated candidates.
 
 To inspect candidates without requests:
 
@@ -46,7 +46,7 @@ To inspect candidates without requests:
 ./endpoint-hunter generate -i urls.txt -s scope.txt -o generated.txt
 ```
 
-The list is printed to stdout. It is saved only when `-o` is supplied. Each URL has a preceding JSON comment with its source URLs, reason, method, and score. Comments are ignored when the file is used as scanner input:
+The list is printed to stdout. It is saved only when `-o` is supplied. Each URL has a preceding JSON comment with its source URLs, reason, method, and score. Comments are ignored when the file is used as scanner input. `generate` keeps every candidate by default. Set `--max-candidates N` to keep only the highest-ranked N candidates.
 
 ```sh
 ./endpoint-hunter scan -i generated.txt -s scope.txt -c 5 -o output/
@@ -82,7 +82,7 @@ Live options for run and scan:
 | `-es`, `--exclude-status` | none | Omit responses with comma-separated status codes, for example `-es 404,401`. Repeatable. |
 | `--no-color` | off | Disable colored status codes. |
 
-Run and generate also accept `--max-candidates 1000` and `--cross-domain`. Cross-domain mode proposes paths observed on one in-scope origin for other origins already present in the authorized inventory. The score is a priority aid, not a probability that an endpoint exists.
+Run and generate also accept `--max-candidates N` and `--cross-domain`. The default limit is 1000 for `run` and unlimited for `generate`; `0` means unlimited in either command. Cross-domain mode proposes paths observed on one in-scope origin for other origins already present in the authorized inventory. The score is a priority aid, not a probability that an endpoint exists.
 
 Headers from `-H` are sent on both baseline and candidate requests. A repeated `-H` for the same name uses the last value. An inline `-H` overrides the same header in `--headers`; `-H 'User-Agent: ...'` also overrides the default user agent. Set the target host through the URL rather than a `Host` header.
 
@@ -90,7 +90,7 @@ The `-es` filter is applied after each request. Matching responses are still tes
 
 ## Input and scope
 
-The parser reads files line by line. It ignores blank and comment lines, normalizes hostnames and paths, removes duplicate normalized URLs, preserves meaningful trailing slashes, and excludes common static assets. Malformed lines are skipped and counted; `--verbose` shows a few line numbers. Fragments are omitted from requests. Numeric IDs, hyphenated UUIDs, and 24-character hexadecimal IDs are identified for analysis and are not copied into new paths. Retained unique URLs and report rows still use memory.
+The parser reads files line by line. It ignores blank and comment lines, normalizes hostnames and paths, removes duplicate normalized URLs, preserves meaningful trailing slashes, and excludes common static assets. Malformed lines are skipped and counted; `--verbose` shows a few line numbers. Fragments are omitted from requests. Numeric IDs, hyphenated UUIDs, and 24-character hexadecimal IDs are identified for analysis. Generation also treats long mixed-case alphanumeric tokens as likely IDs. Retained unique URLs, candidates, and report rows still use memory.
 
 Scope is mandatory for every command that can produce or request candidates. A missing or empty scope file fails. Rules may be in a TXT file, one per line, or passed inline as a wildcard, full URL, or `regex:` rule. Quote inline wildcards so the shell does not expand them.
 
@@ -113,7 +113,7 @@ Hostname rules match the lowercased hostname. A full URL rule containing only a 
 
 ## Generation and validation
 
-Generation groups paths by origin. It identifies resource paths and transfers observed read-oriented child routes to sibling resources under the same parent. For example, given `/api/v1/users`, `/api/v1/orders`, and `/api/v1/users/search`, it proposes `/api/v1/orders/search`. Paths observed only with query strings also contribute route structure; query values are not copied into candidates. Application-specific child names can be transferred with a lower score when the source resource has multiple safe child routes or the child name is repeated across siblings. It uses vocabulary from the inventory rather than a generic directory wordlist. It excludes dynamic identifiers, obvious state-changing suffixes, suspicious path syntax, common static files, and observed routes. A suggestion can still be irrelevant; inspect its evidence before drawing a conclusion.
+Generation groups paths by origin and fills missing combinations supported by observed structures. It combines sibling resources with every observed safe suffix, including multi-segment suffixes. Given `/api/v1/users`, `/api/v1/orders`, and `/api/v1/users/settings/privacy`, it proposes `/api/v1/orders/settings/privacy`. It also combines IDs with safe suffixes only within the exact same resource, and completes three-corner route matrices such as `order-history`, `order-status`, and `product-history` → `product-status`. Hyphenated segments are compared part by part; support counts use grouped frequencies instead of comparing every pair of input URLs. Candidate URLs carry their source evidence and a priority score. There is no hidden 64-resource cutoff. Paths observed only with query strings contribute route structure; query values are not copied. The generator uses inventory vocabulary rather than a generic wordlist. It excludes apparent identifiers, obvious state-changing suffixes, suspicious path syntax, common static files, observed routes, and any destination outside scope. This is exhaustive within those observed safe route families, not every arbitrary string permutation. A suggestion can still be irrelevant; inspect its evidence before drawing a conclusion.
 
 The scanner requests a random missing path under an in-scope candidate directory for each origin, when scope permits one. It then requests each candidate once. Responses are read up to 256 KiB. It compares status, content type, redirect location, authentication challenge, allowed methods, body length, digest, and a bounded text similarity sketch. A 200 page that matches the missing-route baseline can be classified `NOT_FOUND`.
 
@@ -161,6 +161,6 @@ Integration tests use local `httptest` servers to verify actual GET requests, ti
 
 ## Architecture and limits
 
-`parser.go` handles URL input and normalization. `scope.go` enforces allow rules. `analyzer.go` records per-origin structures. `generator.go` creates evidence-backed candidates. `live.go` performs bounded concurrent GET requests. `scanner.go` reviews saved captures. `fingerprint.go` classifies responses. `reporter.go` writes terminal and file output. `cli.go` connects commands and flags.
+`parser.go` handles URL input and normalization. `scope.go` enforces allow rules. `analyzer.go` records per-origin structures. `generator.go` handles manifest gaps; `combinations.go` generates evidence-backed combinations from the inventory. `live.go` performs bounded concurrent GET requests. `scanner.go` reviews saved captures. `fingerprint.go` classifies responses. `reporter.go` writes terminal and file output. `cli.go` connects commands and flags.
 
 This version uses GET only, cannot infer route parameters absent from the inventory, and does not authenticate by itself. Use `-H` or `--headers` for an existing authorized session or token. It does not follow redirects, execute JavaScript, or verify application behavior beyond the HTTP response. Broad scope wildcards can include unrelated hosts; prefer host and path rules that express the intended authorization.

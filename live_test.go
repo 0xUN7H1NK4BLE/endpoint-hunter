@@ -26,8 +26,8 @@ func TestInventoryCandidatesAreConcreteAndScoped(t *testing.T) {
 	if len(got) != 1 || got[0].URL != base+"orders/search" || len(got[0].Evidence) != 2 || got[0].Method != "GET" {
 		t.Fatalf("unexpected candidates: %+v", got)
 	}
-	if len(generateFromInventory(observed, s, false, 0)) != 0 {
-		t.Fatal("candidate cap ignored")
+	if len(generateFromInventory(observed, s, false, 0)) != len(got) {
+		t.Fatal("zero should retain every candidate")
 	}
 }
 
